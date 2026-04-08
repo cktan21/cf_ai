@@ -1,0 +1,33 @@
+{
+	"name": "chat-agent",
+	"version": "0.0.0",
+	"private": true,
+	"scripts": {
+		"deploy": "wrangler deploy",
+		"dev": "wrangler dev",
+		"frontend": "vite",
+		"start": "wrangler dev",
+		"test": "vitest",
+		"cf-typegen": "wrangler types"
+	},
+	"devDependencies": {
+		"@cloudflare/vitest-pool-workers": "^0.12.4",
+		"@types/node": "^25.5.2",
+		"@types/react": "^19.2.14",
+		"@types/react-dom": "^19.2.3",
+		"@vitejs/plugin-react": "^6.0.1",
+		"typescript": "^5.5.2",
+		"vite": "^8.0.7",
+		"vitest": "~3.2.0",
+		"wrangler": "^4.81.0"
+	},
+	"dependencies": {
+		"@cloudflare/ai-chat": "^0.4.0",
+		"agents": "^0.10.0",
+		"ai": "^6.0.153",
+		"react": "^19.2.4",
+		"react-dom": "^19.2.4",
+		"workers-ai-provider": "^3.1.10",
+		"zod": "^4.3.6"
+	}
+}
