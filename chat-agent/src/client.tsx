@@ -325,9 +325,9 @@ function Login() {
 
     return (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", fontFamily: "Inter, sans-serif", backgroundColor: "#f9fafb" }}>
-            <h1 style={{ marginBottom: "10px", color: "#111827" }}>Welcome to AI Chat Agent</h1>
+            <h1 style={{ marginBottom: "10px", color: "#111827" }}>Welcome to CalendAI</h1>
             <p style={{ color: "#4b5563", marginBottom: "30px", textAlign: "center", maxWidth: "400px" }}>
-                Log in to experience stateful agent sessions persisted automatically by Cloudflare Workers!
+                Log in to experience interactive calendar management power by cloudflare workers
             </p>
             <button 
                 onClick={loginWithGoogle} 
@@ -349,9 +349,6 @@ function Login() {
                 <img src="https://developers.google.com/identity/images/g-logo.png" alt="Google" style={{ width: "20px" }} />
                 Sign in with Google
             </button>
-            <p style={{ fontSize: "14px", color: "#b45309", marginTop: "2rem", maxWidth: "400px", textAlign: "center", background: "#fef3c7", padding: "12px", borderRadius: "8px", border: "1px solid #fde68a" }}>
-                <strong>Note:</strong> You must update the <code>GOOGLE_CLIENT_ID</code> variable in <code>src/client.tsx</code> for this to work.
-            </p>
         </div>
     );
 }
