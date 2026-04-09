@@ -2,8 +2,8 @@ import { useAgent } from "agents/react";
 import { useAgentChat } from "@cloudflare/ai-chat/react";
 import { useState, useEffect } from "react";
 
-// TODO: Update with your real Google Client ID from Google Cloud Console
-const GOOGLE_CLIENT_ID = "";
+// Access the environment variable using Vite's import.meta.env system
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
 function Chat({ user, token }: { user: any; token: string }) {
     // Unique agent for each user based on their email
