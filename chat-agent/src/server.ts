@@ -24,11 +24,20 @@ export class ChatAgent extends AIChatAgent {
         const result = streamText({
             model: workersai("@cf/meta/llama-4-scout-17b-16e-instruct"),
             system:
-                "You are a helpful assistant. You can check the weather, " +
-                "get the user's timezone, run calculations, and schedule calendar events. " +
-                "When asked to schedule an event or meeting, use the createCalendarEvent tool.",
+                "You are a helpful assistant. You can check the weather, run calculations, and schedule calendar events. " +
+                "If the user wants to schedule an event, you MUST immediately call the getUserLocation tool to determine their timezone. Do not output raw JSON or explain your actions—just silently execute the tool. " +
+                "If the getUserLocation tool returns an error saying 'denied location access', fallback and ask the user to manually type their city. " +
+                "Once you possess the timezone, calculate the correct time and execute the createCalendarEvent tool.",
             messages: pruneMessages({
-                messages: await convertToModelMessages(this.messages),
+                messages: (await convertToModelMessages(this.messages)).filter((m, i, arr) => {
+                    // Safe-clip orphaned tool calls to dynamically prevent `MissingToolResultsError` crashes
+                    const hasToolCall = m.role === "assistant" && Array.isArray(m.content) && m.content.some((part: any) => part.type === "tool-call");
+                    if (hasToolCall) {
+                        const nextM = arr[i + 1];
+                        return nextM && nextM.role === "tool";
+                    }
+                    return true;
+                }),
                 toolCalls: "before-last-2-messages",
             }),
             tools: {
@@ -52,8 +61,8 @@ export class ChatAgent extends AIChatAgent {
                 }),
 
                 // Client-side tool: no execute function — the browser handles it
-                getUserTimezone: tool({
-                    description: "Get the user's timezone from their browser",
+                getUserLocation: tool({
+                    description: "Get the user's physical geographic location and timezone. Prompts the user's browser for location permission.",
                     inputSchema: z.object({}),
                 }),
 

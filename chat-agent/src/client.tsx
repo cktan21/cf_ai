@@ -25,14 +25,36 @@ function Chat({ user, token }: { user: any; token: string }) {
             agent,
             // Handle client-side tools (tools with no server execute function)
             onToolCall: async ({ toolCall, addToolOutput }) => {
-                if (toolCall.toolName === "getUserTimezone") {
-                    addToolOutput({
-                        toolCallId: toolCall.toolCallId,
-                        output: {
-                            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                            localTime: new Date().toLocaleTimeString(),
-                        },
-                    });
+                if (toolCall.toolName === "getUserLocation") {
+                    if ("geolocation" in navigator) {
+                        navigator.geolocation.getCurrentPosition(
+                            (position) => {
+                                addToolOutput({
+                                    toolCallId: toolCall.toolCallId,
+                                    output: {
+                                        latitude: position.coords.latitude,
+                                        longitude: position.coords.longitude,
+                                        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                                        localTime: new Date().toLocaleTimeString(),
+                                        currentDate: new Date().toISOString(),
+                                    },
+                                });
+                            },
+                            (error) => {
+                                addToolOutput({
+                                    toolCallId: toolCall.toolCallId,
+                                    output: {
+                                        error: `User denied location access or an error occurred: ${error.message}`
+                                    },
+                                });
+                            }
+                        );
+                    } else {
+                        addToolOutput({
+                            toolCallId: toolCall.toolCallId,
+                            output: { error: "Geolocation is not supported by this browser." }
+                        });
+                    }
                 }
             },
         });
@@ -59,6 +81,22 @@ function Chat({ user, token }: { user: any; token: string }) {
                 <strong>Agent State Persistence:</strong> Your Google user data and calendar auth token are securely synced with cloudflare workers' state. Check <code>server.ts</code> to see this in action!
             </div>
 
+            <style>
+                {`
+                @keyframes typing-pulse {
+                    0%, 100% { opacity: 0.4; transform: translateY(0px) scale(0.8); }
+                    50% { opacity: 1; transform: translateY(-2px) scale(1.2); }
+                }
+                .typing-dot {
+                    width: 6px;
+                    height: 6px;
+                    background-color: #9ca3af;
+                    border-radius: 50%;
+                    display: inline-block;
+                    animation: typing-pulse 1.4s infinite ease-in-out;
+                }
+                `}
+            </style>
             <div style={{ minHeight: "400px", border: "1px solid #ccc", borderRadius: "8px", padding: "20px", marginBottom: "20px", display: "flex", flexDirection: "column", gap: "10px", overflowY: "auto", background: "#fafafa" }}>
                 {messages.length === 0 && <div style={{ color: "gray", textAlign: "center", marginTop: "100px" }}>No messages yet. Start chatting!</div>}
                 {messages.map((msg) => (
@@ -70,61 +108,67 @@ function Chat({ user, token }: { user: any; token: string }) {
                                     return <span key={i}>{part.text}</span>;
                                 }
 
-                                // Render approval UI for tools that need confirmation
-                                if (
-                                    part.type === "tool" &&
-                                    part.state === "approval-required"
-                                ) {
+                                // Ignore backend streaming steps
+                                if (part.type === "step-start") return null;
+
+                                // The Cloudflare Agents structure prefixes tool calls with 'tool-'
+                                if (part.type.startsWith("tool-")) {
+                                    // Render approval UI for tools that need confirmation
+                                    if (part.state === "approval-requested") {
+                                        return (
+                                            <div key={part.toolCallId} style={{ marginTop: "10px", padding: "10px", border: "1px solid #f59e0b", borderRadius: "4px", background: "#fef3c7" }}>
+                                                <p style={{ margin: "0 0 10px 0" }}>
+                                                    Approve <strong>{part.toolName}</strong>?
+                                                </p>
+                                                <pre style={{ margin: "0 0 10px 0", fontSize: "12px", background: "#fff", padding: "5px" }}>{JSON.stringify(part.input, null, 2)}</pre>
+                                                <button
+                                                    onClick={() => addToolApprovalResponse({ id: part.approval.id, approved: true })}
+                                                    style={{ marginRight: "10px", padding: "5px 10px", background: "#10b981", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                                                >
+                                                    Approve
+                                                </button>
+                                                <button
+                                                    onClick={() => addToolApprovalResponse({ id: part.approval.id, approved: false })}
+                                                    style={{ padding: "5px 10px", background: "#ef4444", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                                                >
+                                                    Reject
+                                                </button>
+                                            </div>
+                                        );
+                                    }
+
+                                    // Show completed tool results
+                                    if (part.state === "output-available") {
+                                        return (
+                                            <details key={part.toolCallId} style={{ marginTop: "10px", padding: "5px", background: "#f1f5f9", borderRadius: "4px" }}>
+                                                <summary style={{ cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}>✅ {part.toolName} result</summary>
+                                                <pre style={{ margin: "5px 0 0 0", fontSize: "12px", whiteSpace: "pre-wrap" }}>{JSON.stringify(part.output, null, 2)}</pre>
+                                            </details>
+                                        );
+                                    }
+
+                                    // Show loading state for running tools
                                     return (
-                                        <div key={part.toolCallId} style={{ marginTop: "10px", padding: "10px", border: "1px solid #f59e0b", borderRadius: "4px", background: "#fef3c7" }}>
-                                            <p style={{ margin: "0 0 10px 0" }}>
-                                                Approve <strong>{part.toolName}</strong>?
-                                            </p>
-                                            <pre style={{ margin: "0 0 10px 0", fontSize: "12px", background: "#fff", padding: "5px" }}>{JSON.stringify(part.input, null, 2)}</pre>
-                                            <button
-                                                onClick={() =>
-                                                    addToolApprovalResponse({
-                                                        id: part.toolCallId,
-                                                        approved: true,
-                                                    })
-                                                }
-                                                style={{ marginRight: "10px", padding: "5px 10px", background: "#10b981", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
-                                            >
-                                                Approve
-                                            </button>
-                                            <button
-                                                onClick={() =>
-                                                    addToolApprovalResponse({
-                                                        id: part.toolCallId,
-                                                        approved: false,
-                                                    })
-                                                }
-                                                style={{ padding: "5px 10px", background: "#ef4444", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
-                                            >
-                                                Reject
-                                            </button>
+                                        <div key={part.toolCallId} style={{ marginTop: "10px", fontSize: "12px", color: "#6366f1", fontStyle: "italic", padding: "5px", background: "#e0e7ff", borderRadius: "4px" }}>
+                                            ⚙️ Using tool: <strong>{part.toolName}</strong>...
                                         </div>
                                     );
                                 }
 
-                                // Show completed tool results
-                                if (
-                                    part.type === "tool" &&
-                                    part.state === "output-available"
-                                ) {
-                                    return (
-                                        <details key={part.toolCallId} style={{ marginTop: "10px", padding: "5px", background: "#f1f5f9", borderRadius: "4px" }}>
-                                            <summary style={{ cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}>{part.toolName} result</summary>
-                                            <pre style={{ margin: "5px 0 0 0", fontSize: "12px" }}>{JSON.stringify(part.output, null, 2)}</pre>
-                                        </details>
-                                    );
-                                }
-
-                                return null;
+                                // Fallback
+                                return <div key={i} style={{ fontSize: "10px", color: "red", background: "#fee2e2", padding: "4px" }}>UNCAUGHT PART: {JSON.stringify(part)}</div>;
                             })}
                         </div>
                     </div>
                 ))}
+                
+                {status === "streaming" && (
+                    <div style={{ background: "#fff", padding: "14px 18px", borderRadius: "8px", alignSelf: "flex-start", boxShadow: "0 1px 2px rgba(0,0,0,0.1)", display: "flex", gap: "6px", alignItems: "center", marginTop: "5px" }}>
+                        <div className="typing-dot" style={{ animationDelay: "0ms" }}></div>
+                        <div className="typing-dot" style={{ animationDelay: "200ms" }}></div>
+                        <div className="typing-dot" style={{ animationDelay: "400ms" }}></div>
+                    </div>
+                )}
             </div>
 
             <form
@@ -133,13 +177,14 @@ function Chat({ user, token }: { user: any; token: string }) {
                     const input = e.currentTarget.elements.namedItem(
                         "message",
                     ) as HTMLInputElement;
+                    if (!input.value.trim()) return;
                     sendMessage({ text: input.value });
                     input.value = "";
                 }}
                 style={{ display: "flex", gap: "10px", marginBottom: "10px" }}
             >
-                <input name="message" placeholder="Try: What's the weather in Paris?" style={{ flex: 1, padding: "10px", borderRadius: "4px", border: "1px solid #ccc", outline: "none", fontSize: "16px" }} />
-                <button type="submit" disabled={status === "streaming"} style={{ padding: "10px 20px", background: "#3b82f6", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", fontSize: "16px", fontWeight: "bold" }}>
+                <input name="message" disabled={status === "streaming"} placeholder={status === "streaming" ? "The AI is thinking... please wait!" : "Try: book a trip to the bar tonight at 9"} style={{ flex: 1, padding: "10px", borderRadius: "4px", border: "1px solid #ccc", outline: "none", fontSize: "16px" }} />
+                <button type="submit" disabled={status === "streaming"} style={{ padding: "10px 20px", background: status === "streaming" ? "#9ca3af" : "#3b82f6", color: "white", border: "none", borderRadius: "4px", cursor: status === "streaming" ? "not-allowed" : "pointer", fontSize: "16px", fontWeight: "bold" }}>
                     Send
                 </button>
             </form>
