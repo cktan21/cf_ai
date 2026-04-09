@@ -20,7 +20,6 @@ export class ChatAgent extends AIChatAgent {
 
     async onChatMessage() {
         const workersai = createWorkersAI({ binding: this.env.AI });
-
         const result = streamText({
             model: workersai("@cf/meta/llama-4-scout-17b-16e-instruct"),
             system:
@@ -154,7 +153,76 @@ export class ChatAgent extends AIChatAgent {
 }
 
 export default {
-    async fetch(request: Request, env: Env) {
+    async fetch(request: Request, env: any) {
+        const url = new URL(request.url);
+
+        if (url.pathname === "/api/auth/google" && request.method === "POST") {
+            try {
+                const { code, redirectUri } = await request.json<any>();
+                
+                const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                    body: new URLSearchParams({
+                        code,
+                        client_id: env.VITE_GOOGLE_CLIENT_ID,
+                        client_secret: env.VITE_GOOGLE_CLIENT_SECRET,
+                        redirect_uri: redirectUri,
+                        grant_type: "authorization_code"
+                    })
+                });
+                
+                const tokenData = await tokenRes.json<any>();
+                if (tokenData.error) throw new Error(tokenData.error_description || tokenData.error);
+                
+                const userRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+                    headers: { Authorization: `Bearer ${tokenData.access_token}` }
+                });
+                const user = await userRes.json<any>();
+                
+                // Pack into a super simple session payload
+                const sessionPayload = JSON.stringify({ token: tokenData.access_token, user });
+                const base64Session = btoa(encodeURIComponent(sessionPayload));
+                
+                // Extremely safe zero-trust cookie
+                const cookie = `auth_session=${base64Session}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=3600`;
+                
+                return new Response(JSON.stringify({ success: true, user }), {
+                    headers: { 
+                        "Content-Type": "application/json",
+                        "Set-Cookie": cookie
+                    }
+                });
+            } catch (e: any) {
+                return new Response(JSON.stringify({ error: e.message }), { status: 400 });
+            }
+        }
+        
+        // 2. Headless session mount validation
+        if (url.pathname === "/api/auth/me" && request.method === "GET") {
+            const cookieHeader = request.headers.get("Cookie") || "";
+            const match = cookieHeader.match(/auth_session=([^;]+)/);
+            if (match) {
+                try {
+                    const session = JSON.parse(decodeURIComponent(atob(match[1])));
+                    return new Response(JSON.stringify({ user: session.user, token: session.token }), {
+                        headers: { "Content-Type": "application/json" }
+                    });
+                } catch(e) {}
+            }
+            return new Response(JSON.stringify({ user: null }), { status: 401 });
+        }
+
+        // 3. Destroy cookie logout handler
+        if (url.pathname === "/api/auth/logout" && request.method === "POST") {
+            return new Response(JSON.stringify({ success: true }), {
+                headers: { 
+                    "Content-Type": "application/json",
+                    "Set-Cookie": "auth_session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0"
+                }
+            });
+        }
+
         return (
             (await routeAgentRequest(request, env)) ||
             new Response("Not found", { status: 404 })

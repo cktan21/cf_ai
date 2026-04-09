@@ -70,7 +70,7 @@ function Chat({ user, token }: { user: any; token: string }) {
                     </div>
                 </div>
                 <button 
-                    onClick={() => { window.location.hash = ""; window.location.reload(); }} 
+                    onClick={async () => { await fetch("/api/auth/logout", { method: "POST" }); window.location.hash = ""; window.location.reload(); }} 
                     style={{ padding: "5px 10px", background: "#ef4444", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
                 >
                     Sign Out
@@ -196,10 +196,9 @@ function Chat({ user, token }: { user: any; token: string }) {
 
 function Login() {
     const loginWithGoogle = () => {
-        // Use Implicit flow to get access token for demonstration purposes
         const redirectUri = window.location.origin;
         const scope = "email profile https://www.googleapis.com/auth/calendar";
-        const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=${encodeURIComponent(scope)}&prompt=consent`;
+        const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scope)}&prompt=consent`;
         window.location.href = url;
     };
 
@@ -240,27 +239,33 @@ export default function App() {
     const [authData, setAuthData] = useState<{ token: string; user: any } | null>(null);
 
     useEffect(() => {
-        const hash = window.location.hash;
-        if (hash.includes("access_token")) {
-            const params = new URLSearchParams(hash.substring(1));
-            const token = params.get("access_token");
-            if (token) {
-                // Fetch user info from Google APIs using the granted standard token
-                fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-                    headers: { Authorization: `Bearer ${token}` }
-                })
+        const query = new URLSearchParams(window.location.search);
+        const code = query.get("code");
+        
+        if (code) {
+            fetch("/api/auth/google", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ code, redirectUri: window.location.origin })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    setAuthData({ token: data.token, user: data.user });
+                    window.history.replaceState(null, "", window.location.pathname);
+                    window.location.reload();
+                }
+            })
+            .catch(console.error);
+        } else {
+            fetch("/api/auth/me")
                 .then(res => res.json())
-                .then(user => {
-                    if (user && user.email) {
-                        setAuthData({ token, user });
-                        // Clean URL hash so the token disappears from the URL
-                        window.history.replaceState(null, "", window.location.pathname);
+                .then(data => {
+                    if (data && data.user) {
+                        setAuthData({ token: data.token, user: data.user });
                     }
                 })
-                .catch(err => {
-                    console.error("Failed to fetch user data", err);
-                });
-            }
+                .catch(() => {});
         }
     }, []);
 
