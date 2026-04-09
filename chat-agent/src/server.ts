@@ -23,10 +23,11 @@ export class ChatAgent extends AIChatAgent {
         const result = streamText({
             model: workersai("@cf/meta/llama-4-scout-17b-16e-instruct"),
             system:
-                "You are a helpful assistant. You can check the weather, run calculations, and schedule calendar events. " +
-                "If the user wants to schedule an event, you MUST immediately call the getUserLocation tool to determine their timezone. Do not output raw JSON or explain your actions—just silently execute the tool. " +
-                "If the getUserLocation tool returns an error saying 'denied location access', fallback and ask the user to manually type their city. " +
-                "Once you possess the timezone, calculate the correct time and execute the createCalendarEvent tool.",
+                "You are a helpful assistant. You can check the weather, run calculations, and schedule calendar events.\n" +
+                "If the user wants to schedule an event, you MUST immediately call the getUserLocation tool to determine their timezone. Do not output raw JSON or explain your actions—just silently execute the tool.\n" +
+                "If the getUserLocation tool returns an error saying 'denied location access', fallback and ask the user to manually type their city.\n" +
+                "Once you possess the timezone, calculate the correct time and execute the createCalendarEvent tool.\n" +
+                "CRITICAL INSTRUCTION: Once the createCalendarEvent tool is executed successfully and returns a Google Calendar link, you MUST ONLY output a final conversational text message confirming the booking. DO NOT call the createCalendarEvent tool a second time. DO NOT output identical tool calls sequentially. You may only execute createCalendarEvent ONCE per scheduling request.",
             messages: pruneMessages({
                 messages: (await convertToModelMessages(this.messages)).filter((m, i, arr) => {
                     // Safe-clip orphaned tool calls to dynamically prevent `MissingToolResultsError` crashes
@@ -40,7 +41,6 @@ export class ChatAgent extends AIChatAgent {
                 toolCalls: "before-last-2-messages",
             }),
             tools: {
-                // Server-side tool: runs automatically on the server
                 getWeather: tool({
                     description: "Get the current weather for a city",
                     inputSchema: z.object({
@@ -59,7 +59,6 @@ export class ChatAgent extends AIChatAgent {
                     },
                 }),
 
-                // Client-side tool: no execute function — the browser handles it
                 getUserLocation: tool({
                     description: "Get the user's physical geographic location and timezone. Prompts the user's browser for location permission.",
                     inputSchema: z.object({}),
@@ -180,11 +179,9 @@ export default {
                 });
                 const user = await userRes.json<any>();
                 
-                // Pack into a super simple session payload
                 const sessionPayload = JSON.stringify({ token: tokenData.access_token, user });
                 const base64Session = btoa(encodeURIComponent(sessionPayload));
                 
-                // Extremely safe zero-trust cookie
                 const cookie = `auth_session=${base64Session}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=3600`;
                 
                 return new Response(JSON.stringify({ success: true, user }), {
@@ -198,7 +195,6 @@ export default {
             }
         }
         
-        // 2. Headless session mount validation
         if (url.pathname === "/api/auth/me" && request.method === "GET") {
             const cookieHeader = request.headers.get("Cookie") || "";
             const match = cookieHeader.match(/auth_session=([^;]+)/);
@@ -213,7 +209,6 @@ export default {
             return new Response(JSON.stringify({ user: null }), { status: 401 });
         }
 
-        // 3. Destroy cookie logout handler
         if (url.pathname === "/api/auth/logout" && request.method === "POST") {
             return new Response(JSON.stringify({ success: true }), {
                 headers: { 

@@ -5,6 +5,113 @@ import { useState, useEffect } from "react";
 // Access the environment variable using Vite's import.meta.env system
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
+function BookingConfirmationCard({ part, msg, addToolApprovalResponse, sendMessage }: any) {
+    const eventData = part.input;
+    const [isEditing, setIsEditing] = useState(false);
+    
+    // Parses the AI's ISO string so the native HTML `<input type="datetime-local">` can read it cleanly
+    const formatForInput = (isoString?: string) => {
+        if (!isoString) return "";
+        const d = new Date(isoString);
+        return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    };
+
+    const [summary, setSummary] = useState(eventData.summary || "");
+    const [description, setDescription] = useState(eventData.description || "");
+    const [startTime, setStartTime] = useState(() => formatForInput(eventData.startTime));
+    const [endTime, setEndTime] = useState(() => formatForInput(eventData.endTime));
+
+    useEffect(() => {
+        if (part.state === "approval-requested") {
+            const alreadySucceeded = msg.parts.some((p: any) => p.type.startsWith("tool-") && p.toolName === part.toolName && p.state === "output-available");
+            if (alreadySucceeded) {
+                addToolApprovalResponse({ id: part.approval.id, approved: false });
+            }
+        }
+    }, [part.state, msg.parts, part.toolName, part.approval?.id, addToolApprovalResponse]);
+
+    const handleAction = (approved: boolean) => {
+        msg.parts.forEach((p: any) => {
+            if (p.type.startsWith("tool-") && p.state === "approval-requested" && p.toolName === part.toolName) {
+                addToolApprovalResponse({ id: p.approval.id, approved: p.toolCallId === part.toolCallId ? approved : false });
+            }
+        });
+    };
+
+    const handleSaveAndRun = () => {
+        const payload = {
+            summary,
+            description,
+            startTime: new Date(startTime).toISOString(),
+            endTime: new Date(endTime).toISOString()
+        };
+        sendMessage({ text: `Actually, the user edited the exact event details manually on their interface. Please immediately run createCalendarEvent exactly ONCE with EXACTLY these JSON inputs. Do not output multiple tools:\n${JSON.stringify(payload, null, 2)}` });
+    };
+
+    return (
+        <div style={{ marginTop: "15px", padding: "20px", border: "1px solid #e2e8f0", borderRadius: "12px", background: "#ffffff", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px", borderBottom: "1px solid #f1f5f9", paddingBottom: "10px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span style={{ fontSize: "20px" }}>📅</span>
+                    <h3 style={{ margin: 0, color: "#1e293b", fontSize: "16px" }}>Booking Confirmation</h3>
+                </div>
+                {!isEditing && (
+                    <button onClick={() => setIsEditing(true)} style={{ background: "transparent", border: "none", color: "#3b82f6", cursor: "pointer", fontSize: "14px", fontWeight: "500" }}>✏️ Edit</button>
+                )}
+            </div>
+            
+            <div style={{ marginBottom: "20px" }}>
+                {isEditing ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "12px", background: "#f8fafc", padding: "12px", borderRadius: "8px", border: "1px dashed #cbd5e1" }}>
+                        <div>
+                            <label style={{ display: "block", fontSize: "12px", color: "#475569", marginBottom: "4px", fontWeight: "bold", textTransform: "uppercase" }}>Event Title</label>
+                            <input value={summary} onChange={e => setSummary(e.target.value)} style={{ width: "100%", padding: "10px", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "14px", outline: "none", fontFamily: "inherit" }} />
+                        </div>
+                        <div>
+                            <label style={{ display: "block", fontSize: "12px", color: "#475569", marginBottom: "4px", fontWeight: "bold", textTransform: "uppercase" }}>Description (Optional)</label>
+                            <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Add any extra notes here..." style={{ width: "100%", padding: "10px", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "14px", minHeight: "60px", resize: "vertical", outline: "none", fontFamily: "inherit" }} />
+                        </div>
+                        <div style={{ display: "flex", gap: "10px" }}>
+                            <div style={{ flex: 1 }}>
+                                <label style={{ display: "block", fontSize: "12px", color: "#475569", marginBottom: "4px", fontWeight: "bold", textTransform: "uppercase" }}>Start Time</label>
+                                <input type="datetime-local" value={startTime} onChange={e => setStartTime(e.target.value)} style={{ width: "100%", padding: "10px", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "14px", outline: "none", fontFamily: "inherit", color: "#1e293b" }} />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <label style={{ display: "block", fontSize: "12px", color: "#475569", marginBottom: "4px", fontWeight: "bold", textTransform: "uppercase" }}>End Time</label>
+                                <input type="datetime-local" value={endTime} onChange={e => setEndTime(e.target.value)} style={{ width: "100%", padding: "10px", border: "1px solid #cbd5e1", borderRadius: "6px", fontSize: "14px", outline: "none", fontFamily: "inherit", color: "#1e293b" }} />
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                    <div>
+                        <div style={{ fontSize: "18px", fontWeight: "bold", color: "#0f172a", marginBottom: "4px" }}>{eventData.summary}</div>
+                        {eventData.description ? <div style={{ fontSize: "14px", color: "#64748b", marginBottom: "12px" }}>{eventData.description}</div> : <div style={{ fontSize: "14px", color: "#94a3b8", marginBottom: "12px", fontStyle: "italic" }}>No description provided</div>}
+                        
+                        <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "13px", color: "#334155", background: "#f8fafc", padding: "10px", borderRadius: "6px", border: "1px solid #f1f5f9" }}>
+                            <div><strong>Start:</strong> {new Date(eventData.startTime).toLocaleString()}</div>
+                            <div><strong>End:</strong> {new Date(eventData.endTime).toLocaleString()}</div>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            <div style={{ display: "flex", gap: "10px" }}>
+                {isEditing ? (
+                    <>
+                        <button onClick={() => setIsEditing(false)} style={{ padding: "8px 16px", background: "#f1f5f9", color: "#475569", border: "1px solid #cbd5e1", borderRadius: "6px", cursor: "pointer", fontWeight: "600" }}>Cancel</button>
+                        <button onClick={handleSaveAndRun} style={{ flex: 1, padding: "8px 16px", background: "#10b981", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "600", transition: "background 0.2s" }}>Save Changes</button>
+                    </>
+                ) : (
+                    <>
+                        <button onClick={() => handleAction(true)} style={{ flex: 1, padding: "8px 16px", background: "#3b82f6", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "600", transition: "background 0.2s" }}>Approve & Book</button>
+                        <button onClick={() => handleAction(false)} style={{ padding: "8px 16px", background: "#fff", color: "#ef4444", border: "1px solid #fca5a5", borderRadius: "6px", cursor: "pointer", fontWeight: "600" }}>Cancel Event</button>
+                    </>
+                )}
+            </div>
+        </div>
+    );
+}
+
 function Chat({ user, token }: { user: any; token: string }) {
     // Unique agent for each user based on their email
     const agent = useAgent({ agent: "ChatAgent", name: user.email });
@@ -108,46 +215,61 @@ function Chat({ user, token }: { user: any; token: string }) {
                                     return <span key={i}>{part.text}</span>;
                                 }
 
-                                // Ignore backend streaming steps
                                 if (part.type === "step-start") return null;
 
-                                // The Cloudflare Agents structure prefixes tool calls with 'tool-'
                                 if (part.type.startsWith("tool-")) {
-                                    // Render approval UI for tools that need confirmation
                                     if (part.state === "approval-requested") {
+                                        const isLatestMessage = msg.id === messages[messages.length - 1].id;
+                                        if (!isLatestMessage) {
+                                            return <div key={part.toolCallId} style={{ marginTop: "10px", padding: "5px", color: "gray", fontSize: "12px", background: "#f3f4f6", borderRadius: "4px" }}>⚠️ Abandoned tool request</div>;
+                                        }
+
+                                        const firstApprovalIndex = msg.parts.findIndex((p: any) => p.type.startsWith("tool-") && p.state === "approval-requested" && p.toolName === part.toolName);
+                                        if (i !== firstApprovalIndex) {
+                                            return null; 
+                                        }
+
+                                        if (part.toolName === "createCalendarEvent" || (part.input && (part.input as any).summary && (part.input as any).startTime)) {
+                                            return <BookingConfirmationCard key={part.toolCallId} part={part} msg={msg} addToolApprovalResponse={addToolApprovalResponse} sendMessage={sendMessage} />;
+                                        }
+
                                         return (
                                             <div key={part.toolCallId} style={{ marginTop: "10px", padding: "10px", border: "1px solid #f59e0b", borderRadius: "4px", background: "#fef3c7" }}>
-                                                <p style={{ margin: "0 0 10px 0" }}>
-                                                    Approve <strong>{part.toolName}</strong>?
-                                                </p>
+                                                <p style={{ margin: "0 0 10px 0" }}>Approve <strong>{part.toolName}</strong>?</p>
                                                 <pre style={{ margin: "0 0 10px 0", fontSize: "12px", background: "#fff", padding: "5px" }}>{JSON.stringify(part.input, null, 2)}</pre>
-                                                <button
-                                                    onClick={() => addToolApprovalResponse({ id: part.approval.id, approved: true })}
-                                                    style={{ marginRight: "10px", padding: "5px 10px", background: "#10b981", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
-                                                >
-                                                    Approve
-                                                </button>
-                                                <button
-                                                    onClick={() => addToolApprovalResponse({ id: part.approval.id, approved: false })}
-                                                    style={{ padding: "5px 10px", background: "#ef4444", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
-                                                >
-                                                    Reject
-                                                </button>
+                                                <button onClick={() => addToolApprovalResponse({ id: part.approval.id, approved: true })} style={{ marginRight: "10px", padding: "5px 10px", background: "#10b981", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}>Approve</button>
+                                                <button onClick={() => addToolApprovalResponse({ id: part.approval.id, approved: false })} style={{ padding: "5px 10px", background: "#ef4444", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}>Reject</button>
                                             </div>
                                         );
                                     }
 
-                                    // Show completed tool results
                                     if (part.state === "output-available") {
+                                        let summaryText = `✅ ${part.toolName} completed`;
+                                        let extraData = part.output;
+                                        
+                                        if (part.toolName === "getUserLocation" && part.output && (part.output as any).timezone) {
+                                            summaryText = `📍 Identified device timezone as ${(part.output as any).timezone}`;
+                                        } else if (part.toolName === "createCalendarEvent" && part.output && (part.output as any).success) {
+                                            summaryText = `🗓️ Successfully added to Google Calendar!`;
+                                            return (
+                                                <div key={part.toolCallId} style={{ marginTop: "10px", padding: "10px", background: "#dcfce3", border: "1px solid #86efac", borderRadius: "8px", color: "#166534", fontSize: "14px", fontWeight: "500", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                                    {summaryText}
+                                                    {(part.output as any).link && <a href={(part.output as any).link} target="_blank" rel="noreferrer" style={{ color: "#166534", textDecoration: "underline" }}>View Event</a>}
+                                                </div>
+                                            );
+                                        }
+
                                         return (
-                                            <details key={part.toolCallId} style={{ marginTop: "10px", padding: "5px", background: "#f1f5f9", borderRadius: "4px" }}>
-                                                <summary style={{ cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}>✅ {part.toolName} result</summary>
-                                                <pre style={{ margin: "5px 0 0 0", fontSize: "12px", whiteSpace: "pre-wrap" }}>{JSON.stringify(part.output, null, 2)}</pre>
+                                            <details key={part.toolCallId} style={{ marginTop: "10px", padding: "8px", background: "#f1f5f9", borderRadius: "6px" }}>
+                                                <summary style={{ cursor: "pointer", fontSize: "12px", fontWeight: "600", color: "#475569" }}>{summaryText}</summary>
+                                                <div style={{ marginTop: "8px", fontSize: "11px", color: "gray" }}>
+                                                    <strong>Debug data:</strong>
+                                                    <pre style={{ margin: "5px 0 0 0", whiteSpace: "pre-wrap" }}>{JSON.stringify(extraData, null, 2)}</pre>
+                                                </div>
                                             </details>
                                         );
                                     }
 
-                                    // Show loading state for running tools
                                     return (
                                         <div key={part.toolCallId} style={{ marginTop: "10px", fontSize: "12px", color: "#6366f1", fontStyle: "italic", padding: "5px", background: "#e0e7ff", borderRadius: "4px" }}>
                                             ⚙️ Using tool: <strong>{part.toolName}</strong>...
@@ -155,7 +277,6 @@ function Chat({ user, token }: { user: any; token: string }) {
                                     );
                                 }
 
-                                // Fallback
                                 return <div key={i} style={{ fontSize: "10px", color: "red", background: "#fee2e2", padding: "4px" }}>UNCAUGHT PART: {JSON.stringify(part)}</div>;
                             })}
                         </div>
