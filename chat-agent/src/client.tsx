@@ -21,15 +21,6 @@ function BookingConfirmationCard({ part, msg, addToolApprovalResponse, sendMessa
     const [startTime, setStartTime] = useState(() => formatForInput(eventData.startTime));
     const [endTime, setEndTime] = useState(() => formatForInput(eventData.endTime));
 
-    useEffect(() => {
-        if (part.state === "approval-requested") {
-            const alreadySucceeded = msg.parts.some((p: any) => p.type.startsWith("tool-") && p.toolName === part.toolName && p.state === "output-available");
-            if (alreadySucceeded) {
-                addToolApprovalResponse({ id: part.approval.id, approved: false });
-            }
-        }
-    }, [part.state, msg.parts, part.toolName, part.approval?.id, addToolApprovalResponse]);
-
     const handleAction = (approved: boolean) => {
         msg.parts.forEach((p: any) => {
             if (p.type.startsWith("tool-") && p.state === "approval-requested" && p.toolName === part.toolName) {

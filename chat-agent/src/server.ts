@@ -34,7 +34,10 @@ export class ChatAgent extends AIChatAgent {
                     const hasToolCall = m.role === "assistant" && Array.isArray(m.content) && m.content.some((part: any) => part.type === "tool-call");
                     if (hasToolCall) {
                         const nextM = arr[i + 1];
-                        return nextM && nextM.role === "tool";
+                        // Keep the assistant message if it's the last message (waiting for result/approval)
+                        // OR if the next message is the tool result. 
+                        // Drop it if the next message is NOT a tool result (i.e., it's an orphaned call).
+                        return !nextM || nextM.role === "tool";
                     }
                     return true;
                 }),
