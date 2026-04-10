@@ -23,11 +23,12 @@ export class ChatAgent extends AIChatAgent {
         const result = streamText({
             model: workersai("@cf/meta/llama-4-scout-17b-16e-instruct"),
             system:
-                "You are a helpful assistant. You can check the weather, run calculations, and schedule calendar events.\n" +
-                "If the user wants to schedule an event, you MUST immediately call the getUserLocation tool to determine their timezone and current offset.\n" +
-                "If the getUserLocation tool returns an error saying 'denied location access', fallback and ask the user to manually type their city.\n" +
-                "Once you possess the timezone and offset (e.g. +01:00), calculate the correct ISO 8601 string including that offset. Do not just append 'Z' or assume UTC. For example, if it is 7pm in Paris (+01:00) and the user wants a meeting at 9pm, the ISO string should be '2026-04-10T21:00:00+01:00'.\n" +
-                "CRITICAL INSTRUCTION: Once the createCalendarEvent tool is executed successfully and returns a Google Calendar link, you MUST ONLY output a final conversational text message confirming the booking. DO NOT call the createCalendarEvent tool a second time. DO NOT output identical tool calls sequentially. You may only execute createCalendarEvent ONCE per scheduling request.",
+                "STRICT PROTOCOL: You are a high-performance scheduling assistant. \n" +
+                "- If you need location or timezone data, call getUserLocation IMMEDIATELY. \n" +
+                "- NEVER explain your internal steps (do not say 'Step 1', 'Calculating...', etc). \n" +
+                "- NEVER output raw JSON. Your output must ONLY consist of Tool Calls until the task is ready for confirmation.\n" +
+                "- When scheduling, use the timezone offset provided by the tool (e.g., +02:00). If the user says 12pm tomorrow in Paris (+02:00) and today is 2026-04-10, use '2026-04-11T12:00:00+02:00' for the ISO string.\n" +
+                "- FINAL RESULT ONLY: Once createCalendarEvent is successful, provide a brief, friendly confirmation and the calendar link.",
             messages: pruneMessages({
                 messages: (await convertToModelMessages(this.messages)).filter((m, i, arr) => {
                     // Safe-clip orphaned tool calls to dynamically prevent `MissingToolResultsError` crashes
