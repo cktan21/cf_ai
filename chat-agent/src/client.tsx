@@ -40,11 +40,10 @@ function BookingConfirmationCard({ part, msg, addToolApprovalResponse, sendMessa
             });
         }
 
-        msg.parts.forEach((p: any) => {
-            if (p.type.startsWith("tool-") && p.state === "approval-requested" && p.toolName === part.toolName) {
-                addToolApprovalResponse({ id: p.approval.id, approved: p.toolCallId === part.toolCallId ? approved : false });
-            }
-        });
+        // Only respond to the specific tool call for this card
+        if (part.approval?.id) {
+            addToolApprovalResponse({ id: part.approval.id, approved });
+        }
     };
 
     const handleSaveLocal = () => {
@@ -117,14 +116,17 @@ function BookingConfirmationCard({ part, msg, addToolApprovalResponse, sendMessa
 
 function DeleteConfirmationCard({ part, msg, addToolApprovalResponse }: any) {
     const { summary } = part.input;
+    const [hasClicked, setHasClicked] = useState(false);
 
     const handleAction = (approved: boolean) => {
-        msg.parts.forEach((p: any) => {
-            if (p.type.startsWith("tool-") && p.state === "approval-requested" && p.toolName === part.toolName) {
-                addToolApprovalResponse({ id: p.approval.id, approved: p.toolCallId === part.toolCallId ? approved : false });
-            }
-        });
+        if (approved) setHasClicked(true);
+        // Only respond to the specific tool call for this card
+        if (part.approval?.id) {
+            addToolApprovalResponse({ id: part.approval.id, approved });
+        }
     };
+
+    if (hasClicked) return null; // Immediately "remove" from frontend while running in background
 
     return (
         <div style={{ marginTop: "15px", padding: "16px", border: "1px solid #fee2e2", borderRadius: "12px", background: "#fffcfc", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)" }}>
@@ -371,7 +373,9 @@ function Chat({ user, token }: { user: any; token: string }) {
                                             let summaryText = `✅ ${part.toolName} completed`;
                                             if (part.toolName === "getUserLocation" && part.output?.timezone) summaryText = `📍 Location: ${part.output.timezone}`;
                                             else if (part.toolName === "createCalendarEvent" && part.output?.success) summaryText = `🗓️ Trip added to Google Calendar!`;
-                                            else if (part.toolName === "deleteCalendarEvent" && part.output?.success) summaryText = `🗑️ Event removed successfully.`;
+                                            if (part.toolName === "deleteCalendarEvent" && part.output?.success) {
+                                                return <div key={part.toolCallId} style={{ display: "inline-block", marginTop: "5px", padding: "2px 8px", background: "#fef2f2", color: "#991b1b", fontSize: "11px", borderRadius: "10px", border: "1px solid #fee2e2", fontWeight: "600" }}>🗑️ Deleted</div>;
+                                            }
                                             return (
                                                 <div key={part.toolCallId} style={{ marginTop: "10px", padding: "8px 12px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "8px", color: "#166534", fontSize: "13px", fontWeight: "600" }}>
                                                     {summaryText}
