@@ -28,7 +28,7 @@ export class ChatAgent extends AIChatAgent {
                 "- NEVER explain your internal steps (do not say 'Step 1', 'Calculating...', etc). \n" +
                 "- NEVER output raw JSON. Your output must ONLY consist of Tool Calls until the task is ready for confirmation.\n" +
                 "- When scheduling, use the timezone offset provided by the tool (e.g., +02:00). If the user says 12pm tomorrow in Paris (+02:00) and today is 2026-04-10, use '2026-04-11T12:00:00+02:00' for the ISO string.\n" +
-                "- FINAL RESULT ONLY: Once createCalendarEvent is successful, provide a brief, friendly confirmation and the calendar link.",
+                "- FINAL RESULT ONLY: Once createCalendarEvent is successful, provide a brief, friendly confirmation",
             messages: pruneMessages({
                 messages: (await convertToModelMessages(this.messages)).filter((m, i, arr) => {
                     // Safe-clip orphaned tool calls to dynamically prevent `MissingToolResultsError` crashes
@@ -111,9 +111,21 @@ export class ChatAgent extends AIChatAgent {
                     }),
                     // The magic boolean triggering the HITL flow in @cloudflare/ai-chat
                     needsApproval: async () => true,
-                    execute: async ({ summary, description, startTime, endTime }) => {
+                    execute: async (args, { toolCallId }) => {
+                        // Check if the user manually edited these inputs on the frontend
+                        const state = (this.state as any);
+                        let finalArgs = args;
+                        if (state?.editedInputs && state.editedInputs[toolCallId]) {
+                            console.log(`Executing tool ${toolCallId} with manual overrides from state`);
+                            finalArgs = state.editedInputs[toolCallId];
+                            // Optional: clean up the override after use
+                            delete state.editedInputs[toolCallId];
+                            await this.setState(state);
+                        }
+
+                        const { summary, description, startTime, endTime } = finalArgs;
                         // Access the state persisted previously when the user logged in
-                        const token = (this.state as any)?.googleToken;
+                        const token = state?.googleToken;
                         
                         if (!token) {
                             return { error: "Authentication missing. User is not logged in or missing token." };

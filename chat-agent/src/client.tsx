@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 // Access the environment variable using Vite's import.meta.env system
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
-function BookingConfirmationCard({ part, msg, addToolApprovalResponse, sendMessage }: any) {
+function BookingConfirmationCard({ part, msg, addToolApprovalResponse, sendMessage, agent }: any) {
     const eventData = part.input;
     const [isEditing, setIsEditing] = useState(false);
     
@@ -22,7 +22,24 @@ function BookingConfirmationCard({ part, msg, addToolApprovalResponse, sendMessa
     const [startTime, setStartTime] = useState(() => formatForInput(eventData.startTime));
     const [endTime, setEndTime] = useState(() => formatForInput(eventData.endTime));
 
-    const handleAction = (approved: boolean) => {
+    const handleAction = async (approved: boolean) => {
+        if (approved) {
+            // Capture the current component state (which might have been edited)
+            const payload = {
+                summary,
+                description,
+                startTime: new Date(startTime).toISOString(),
+                endTime: new Date(endTime).toISOString()
+            };
+            
+            // Stash the final data in the Agent's state so the server uses it instead of original inputs
+            const currentEdited = (agent.state as any)?.editedInputs || {};
+            await agent.setState({
+                ...agent.state,
+                editedInputs: { ...currentEdited, [part.toolCallId]: payload }
+            });
+        }
+
         msg.parts.forEach((p: any) => {
             if (p.type.startsWith("tool-") && p.state === "approval-requested" && p.toolName === part.toolName) {
                 addToolApprovalResponse({ id: p.approval.id, approved: p.toolCallId === part.toolCallId ? approved : false });
@@ -30,14 +47,8 @@ function BookingConfirmationCard({ part, msg, addToolApprovalResponse, sendMessa
         });
     };
 
-    const handleSaveAndRun = () => {
-        const payload = {
-            summary,
-            description,
-            startTime: new Date(startTime).toISOString(),
-            endTime: new Date(endTime).toISOString()
-        };
-        sendMessage({ text: `Actually, the user edited the exact event details manually on their interface. Please immediately run createCalendarEvent exactly ONCE with EXACTLY these JSON inputs. Do not output multiple tools:\n${JSON.stringify(payload, null, 2)}` });
+    const handleSaveLocal = () => {
+        setIsEditing(false);
     };
 
     return (
@@ -76,12 +87,12 @@ function BookingConfirmationCard({ part, msg, addToolApprovalResponse, sendMessa
                     </div>
                 ) : (
                     <div>
-                        <div style={{ fontSize: "18px", fontWeight: "bold", color: "#0f172a", marginBottom: "4px" }}>{eventData.summary}</div>
-                        {eventData.description ? <div style={{ fontSize: "14px", color: "#64748b", marginBottom: "12px" }}>{eventData.description}</div> : <div style={{ fontSize: "14px", color: "#94a3b8", marginBottom: "12px", fontStyle: "italic" }}>No description provided</div>}
+                        <div style={{ fontSize: "18px", fontWeight: "bold", color: "#0f172a", marginBottom: "4px" }}>{summary}</div>
+                        {description ? <div style={{ fontSize: "14px", color: "#64748b", marginBottom: "12px" }}>{description}</div> : <div style={{ fontSize: "14px", color: "#94a3b8", marginBottom: "12px", fontStyle: "italic" }}>No description provided</div>}
                         
                         <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "13px", color: "#334155", background: "#f8fafc", padding: "10px", borderRadius: "6px", border: "1px solid #f1f5f9" }}>
-                            <div><strong>Start:</strong> {new Date(eventData.startTime).toLocaleString()}</div>
-                            <div><strong>End:</strong> {new Date(eventData.endTime).toLocaleString()}</div>
+                            <div><strong>Start:</strong> {startTime ? new Date(startTime).toLocaleString() : "Not set"}</div>
+                            <div><strong>End:</strong> {endTime ? new Date(endTime).toLocaleString() : "Not set"}</div>
                         </div>
                     </div>
                 )}
@@ -91,7 +102,7 @@ function BookingConfirmationCard({ part, msg, addToolApprovalResponse, sendMessa
                 {isEditing ? (
                     <>
                         <button onClick={() => setIsEditing(false)} style={{ padding: "8px 16px", background: "#f1f5f9", color: "#475569", border: "1px solid #cbd5e1", borderRadius: "6px", cursor: "pointer", fontWeight: "600" }}>Cancel</button>
-                        <button onClick={handleSaveAndRun} style={{ flex: 1, padding: "8px 16px", background: "#10b981", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "600", transition: "background 0.2s" }}>Save Changes</button>
+                        <button onClick={handleSaveLocal} style={{ flex: 1, padding: "8px 16px", background: "#10b981", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "600", transition: "background 0.2s" }}>Save & Preview</button>
                     </>
                 ) : (
                     <>
@@ -291,7 +302,7 @@ function Chat({ user, token }: { user: any; token: string }) {
                                             const firstApprovalIndex = msg.parts.findIndex((p: any) => p.type.startsWith("tool-") && p.state === "approval-requested" && p.toolName === part.toolName);
                                             if (i !== firstApprovalIndex) return null;
                                             if (part.toolName === "createCalendarEvent" || (part.input && (part.input as any).summary && (part.input as any).startTime)) {
-                                                return <BookingConfirmationCard key={part.toolCallId} part={part} msg={msg} addToolApprovalResponse={addToolApprovalResponse} sendMessage={sendMessage} />;
+                                                return <BookingConfirmationCard key={part.toolCallId} part={part} msg={msg} addToolApprovalResponse={addToolApprovalResponse} sendMessage={sendMessage} agent={agent} />;
                                             }
                                         }
                                         if (part.state === "output-available") {
