@@ -107,6 +107,43 @@ function Chat({ user, token }: { user: any; token: string }) {
     // Unique agent for each user based on their email
     const agent = useAgent({ agent: "ChatAgent", name: user.email });
 
+    // State to force a refresh of the calendar iframe
+    const [calendarNonce, setCalendarNonce] = useState(0);
+
+    // Resizable panels state
+    const [chatWidth, setChatWidth] = useState(50); // percentage
+    const [isDragging, setIsDragging] = useState(false);
+
+    const handleMouseDown = (e: React.MouseEvent) => {
+        setIsDragging(true);
+        e.preventDefault();
+    };
+
+    useEffect(() => {
+        const handleMouseMove = (e: MouseEvent) => {
+            if (!isDragging) return;
+            const newWidth = (e.clientX / window.innerWidth) * 100;
+            // Set bounds to prevent panels from disappearing
+            if (newWidth > 15 && newWidth < 85) {
+                setChatWidth(newWidth);
+            }
+        };
+
+        const handleMouseUp = () => {
+            setIsDragging(false);
+        };
+
+        if (isDragging) {
+            window.addEventListener("mousemove", handleMouseMove);
+            window.addEventListener("mouseup", handleMouseUp);
+        }
+
+        return () => {
+            window.removeEventListener("mousemove", handleMouseMove);
+            window.removeEventListener("mouseup", handleMouseUp);
+        };
+    }, [isDragging]);
+
     // Store user data in Agent state, demonstrating persistence based on user data
     useEffect(() => {
         if (agent) {
@@ -164,154 +201,187 @@ function Chat({ user, token }: { user: any; token: string }) {
             },
         });
 
+    // Automatically refresh the calendar when an event is successfully booked
+    useEffect(() => {
+        const lastMessage = messages[messages.length - 1];
+        if (lastMessage) {
+            const hasSuccess = lastMessage.parts.some(
+                (p: any) => p.toolName === "createCalendarEvent" && p.state === "output-available" && p.output?.success
+            );
+            if (hasSuccess) {
+                // Delay slightly to give the Google backend time to reflect the new event
+                setTimeout(() => setCalendarNonce((n) => n + 1), 1500);
+            }
+        }
+    }, [messages]);
+
     return (
-        <div style={{ fontFamily: "Inter, sans-serif", maxWidth: "800px", margin: "0 auto", padding: "20px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", padding: "10px", background: "#f3f4f6", borderRadius: "8px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                    {user.picture && <img src={user.picture} alt="Profile" style={{ width: "40px", borderRadius: "50%" }} />}
-                    <div>
-                        <h3 style={{ margin: 0 }}>{user.name}</h3>
-                        <div style={{ fontSize: "12px", color: "gray" }}>Logged in with Google</div>
+        <div style={{ display: "flex", height: "100vh", backgroundColor: "#f8fafc", fontFamily: "Inter, sans-serif", overflow: "hidden", userSelect: isDragging ? "none" : "auto" }}>
+            {/* Sidebar: Chat Interface */}
+            <div style={{ width: `${chatWidth}%`, minWidth: "300px", display: "flex", flexDirection: "column", backgroundColor: "white", boxShadow: "4px 0 24px rgba(0,0,0,0.02)", zIndex: 10 }}>
+                {/* User Header */}
+                <div style={{ padding: "20px", borderBottom: "1px solid #f1f5f9", display: "flex", justifyContent: "space-between", alignItems: "center", background: "linear-gradient(to right, #ffffff, #f8faff)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                        {user.picture && <img src={user.picture} alt="Profile" style={{ width: "40px", height: "40px", borderRadius: "12px", border: "2px solid #fff", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }} />}
+                        <div>
+                            <h3 style={{ margin: 0, fontSize: "15px", color: "#1e293b" }}>{user.name}</h3>
+                            <div style={{ fontSize: "11px", color: "#64748b", fontWeight: "500" }}>Live Assistant</div>
+                        </div>
                     </div>
+                    <button 
+                        onClick={async () => { await fetch("/api/auth/logout", { method: "POST" }); window.location.hash = ""; window.location.reload(); }} 
+                        style={{ padding: "6px 12px", background: "#fee2e2", color: "#ef4444", border: "none", borderRadius: "8px", cursor: "pointer", fontSize: "12px", fontWeight: "600" }}
+                    >
+                        Sign Out
+                    </button>
                 </div>
-                <button 
-                    onClick={async () => { await fetch("/api/auth/logout", { method: "POST" }); window.location.hash = ""; window.location.reload(); }} 
-                    style={{ padding: "5px 10px", background: "#ef4444", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
-                >
-                    Sign Out
-                </button>
-            </div>
-            
-            <div style={{ background: "#e0f2fe", padding: "10px", borderRadius: "8px", marginBottom: "20px", fontSize: "14px", border: "1px solid #bae6fd" }}>
-                <strong>Agent State Persistence:</strong> Your Google user data and calendar auth token are securely synced with cloudflare workers' state. Check <code>server.ts</code> to see this in action!
-            </div>
 
-            <style>
-                {`
-                @keyframes typing-pulse {
-                    0%, 100% { opacity: 0.4; transform: translateY(0px) scale(0.8); }
-                    50% { opacity: 1; transform: translateY(-2px) scale(1.2); }
-                }
-                .typing-dot {
-                    width: 6px;
-                    height: 6px;
-                    background-color: #9ca3af;
-                    border-radius: 50%;
-                    display: inline-block;
-                    animation: typing-pulse 1.4s infinite ease-in-out;
-                }
-                `}
-            </style>
-            <div style={{ minHeight: "400px", border: "1px solid #ccc", borderRadius: "8px", padding: "20px", marginBottom: "20px", display: "flex", flexDirection: "column", gap: "10px", overflowY: "auto", background: "#fafafa" }}>
-                {messages.length === 0 && <div style={{ color: "gray", textAlign: "center", marginTop: "100px" }}>No messages yet. Start chatting!</div>}
-                {messages.map((msg) => (
-                    <div key={msg.id} style={{ background: msg.role === "user" ? "#dcf8c6" : "#fff", padding: "10px", borderRadius: "8px", alignSelf: msg.role === "user" ? "flex-end" : "flex-start", maxWidth: "80%", boxShadow: "0 1px 2px rgba(0,0,0,0.1)" }}>
-                        <strong>{msg.role}:</strong>
-                        <div style={{ marginTop: "5px" }}>
-                            {msg.parts.map((part, i) => {
-                                if (part.type === "text") {
-                                    return <span key={i}>{part.text}</span>;
-                                }
+                <style>
+                    {`
+                    @keyframes typing-pulse {
+                        0%, 100% { opacity: 0.4; transform: scale(0.8); }
+                        50% { opacity: 1; transform: scale(1.1); }
+                    }
+                    .typing-dot {
+                        width: 6px;
+                        height: 6px;
+                        background-color: #3b82f6;
+                        border-radius: 50%;
+                        display: inline-block;
+                        animation: typing-pulse 1.4s infinite ease-in-out;
+                    }
+                    ::-webkit-scrollbar { width: 6px; }
+                    ::-webkit-scrollbar-track { background: transparent; }
+                    ::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+                    ::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+                    `}
+                </style>
 
-                                if (part.type === "step-start") return null;
-
-                                if (part.type.startsWith("tool-")) {
-                                    if (part.state === "approval-requested") {
-                                        const isLatestMessage = msg.id === messages[messages.length - 1].id;
-                                        if (!isLatestMessage) {
-                                            return <div key={part.toolCallId} style={{ marginTop: "10px", padding: "5px", color: "gray", fontSize: "12px", background: "#f3f4f6", borderRadius: "4px" }}>⚠️ Abandoned tool request</div>;
+                {/* Messages Area */}
+                <div style={{ flex: 1, overflowY: "auto", padding: "20px", display: "flex", flexDirection: "column", gap: "16px", scrollBehavior: "smooth" }}>
+                    {messages.length === 0 && (
+                        <div style={{ color: "#94a3b8", textAlign: "center", marginTop: "100px", padding: "0 40px" }}>
+                            <div style={{ fontSize: "40px", marginBottom: "10px" }}>👋</div>
+                            <h2 style={{ fontSize: "18px", color: "#475569", marginBottom: "8px" }}>Hello, {user.given_name}!</h2>
+                            <p style={{ fontSize: "14px", lineHeight: "1.5" }}>I'm your CalendAI assistant. You can ask me to book meetings or check your schedule.</p>
+                        </div>
+                    )}
+                    {messages.map((msg) => (
+                        <div key={msg.id} style={{ 
+                            background: msg.role === "user" ? "#3b82f6" : "#ffffff", 
+                            color: msg.role === "user" ? "white" : "#1e293b",
+                            padding: "12px 16px", 
+                            borderRadius: msg.role === "user" ? "18px 18px 4px 18px" : "18px 18px 18px 4px", 
+                            alignSelf: msg.role === "user" ? "flex-end" : "flex-start", 
+                            maxWidth: "85%", 
+                            boxShadow: msg.role === "user" ? "0 4px 12px rgba(59, 130, 246, 0.2)" : "0 2px 8px rgba(0,0,0,0.05)",
+                            fontSize: "14px",
+                            lineHeight: "1.5"
+                        }}>
+                            <div style={{ fontWeight: "700", fontSize: "11px", marginBottom: "4px", opacity: 0.8, textTransform: "uppercase", letterSpacing: "0.5px" }}>{msg.role}</div>
+                            <div>
+                                {msg.parts.map((part, i) => {
+                                    if (part.type === "text") return <span key={i}>{part.text}</span>;
+                                    if (part.type === "step-start") return null;
+                                    if (part.type.startsWith("tool-")) {
+                                        if (part.state === "approval-requested") {
+                                            const isLatestMessage = msg.id === messages[messages.length - 1].id;
+                                            if (!isLatestMessage) return <div key={part.toolCallId} style={{ marginTop: "10px", padding: "8px", color: "#64748b", fontSize: "12px", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0" }}>⚠️ Abandoned tool request</div>;
+                                            const firstApprovalIndex = msg.parts.findIndex((p: any) => p.type.startsWith("tool-") && p.state === "approval-requested" && p.toolName === part.toolName);
+                                            if (i !== firstApprovalIndex) return null;
+                                            if (part.toolName === "createCalendarEvent" || (part.input && (part.input as any).summary && (part.input as any).startTime)) {
+                                                return <BookingConfirmationCard key={part.toolCallId} part={part} msg={msg} addToolApprovalResponse={addToolApprovalResponse} sendMessage={sendMessage} />;
+                                            }
                                         }
-
-                                        const firstApprovalIndex = msg.parts.findIndex((p: any) => p.type.startsWith("tool-") && p.state === "approval-requested" && p.toolName === part.toolName);
-                                        if (i !== firstApprovalIndex) {
-                                            return null; 
-                                        }
-
-                                        if (part.toolName === "createCalendarEvent" || (part.input && (part.input as any).summary && (part.input as any).startTime)) {
-                                            return <BookingConfirmationCard key={part.toolCallId} part={part} msg={msg} addToolApprovalResponse={addToolApprovalResponse} sendMessage={sendMessage} />;
-                                        }
-
-                                        return (
-                                            <div key={part.toolCallId} style={{ marginTop: "10px", padding: "10px", border: "1px solid #f59e0b", borderRadius: "4px", background: "#fef3c7" }}>
-                                                <p style={{ margin: "0 0 10px 0" }}>Approve <strong>{part.toolName}</strong>?</p>
-                                                <pre style={{ margin: "0 0 10px 0", fontSize: "12px", background: "#fff", padding: "5px" }}>{JSON.stringify(part.input, null, 2)}</pre>
-                                                <button onClick={() => addToolApprovalResponse({ id: part.approval.id, approved: true })} style={{ marginRight: "10px", padding: "5px 10px", background: "#10b981", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}>Approve</button>
-                                                <button onClick={() => addToolApprovalResponse({ id: part.approval.id, approved: false })} style={{ padding: "5px 10px", background: "#ef4444", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}>Reject</button>
-                                            </div>
-                                        );
-                                    }
-
-                                    if (part.state === "output-available") {
-                                        let summaryText = `✅ ${part.toolName} completed`;
-                                        let extraData = part.output;
-                                        
-                                        if (part.toolName === "getUserLocation" && part.output && (part.output as any).timezone) {
-                                            summaryText = `📍 Identified device timezone as ${(part.output as any).timezone}`;
-                                        } else if (part.toolName === "createCalendarEvent" && part.output && (part.output as any).success) {
-                                            summaryText = `🗓️ Successfully added to Google Calendar!`;
+                                        if (part.state === "output-available") {
+                                            let summaryText = `✅ ${part.toolName} completed`;
+                                            if (part.toolName === "getUserLocation" && part.output?.timezone) summaryText = `📍 Location: ${part.output.timezone}`;
+                                            else if (part.toolName === "createCalendarEvent" && part.output?.success) summaryText = `🗓️ Trip added to Google Calendar!`;
                                             return (
-                                                <div key={part.toolCallId} style={{ marginTop: "10px", padding: "10px", background: "#dcfce3", border: "1px solid #86efac", borderRadius: "8px", color: "#166534", fontSize: "14px", fontWeight: "500", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                                <div key={part.toolCallId} style={{ marginTop: "10px", padding: "8px 12px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "8px", color: "#166534", fontSize: "13px", fontWeight: "600" }}>
                                                     {summaryText}
-                                                    {(part.output as any).link && <a href={(part.output as any).link} target="_blank" rel="noreferrer" style={{ color: "#166534", textDecoration: "underline" }}>View Event</a>}
                                                 </div>
                                             );
                                         }
-
-                                        return (
-                                            <details key={part.toolCallId} style={{ marginTop: "10px", padding: "8px", background: "#f1f5f9", borderRadius: "6px" }}>
-                                                <summary style={{ cursor: "pointer", fontSize: "12px", fontWeight: "600", color: "#475569" }}>{summaryText}</summary>
-                                                <div style={{ marginTop: "8px", fontSize: "11px", color: "gray" }}>
-                                                    <strong>Debug data:</strong>
-                                                    <pre style={{ margin: "5px 0 0 0", whiteSpace: "pre-wrap" }}>{JSON.stringify(extraData, null, 2)}</pre>
-                                                </div>
-                                            </details>
-                                        );
+                                        return <div key={part.toolCallId} style={{ marginTop: "10px", fontSize: "12px", color: "#3b82f6", fontStyle: "italic", background: "#eff6ff", padding: "8px", borderRadius: "8px" }}>⚙️ Running: <strong>{part.toolName}</strong>...</div>;
                                     }
-
-                                    return (
-                                        <div key={part.toolCallId} style={{ marginTop: "10px", fontSize: "12px", color: "#6366f1", fontStyle: "italic", padding: "5px", background: "#e0e7ff", borderRadius: "4px" }}>
-                                            ⚙️ Using tool: <strong>{part.toolName}</strong>...
-                                        </div>
-                                    );
-                                }
-
-                                return <div key={i} style={{ fontSize: "10px", color: "red", background: "#fee2e2", padding: "4px" }}>UNCAUGHT PART: {JSON.stringify(part)}</div>;
-                            })}
+                                    return null;
+                                })}
+                            </div>
                         </div>
+                    ))}
+                    {status === "streaming" && (
+                        <div style={{ background: "#ffffff", padding: "12px 18px", borderRadius: "18px 18px 18px 4px", alignSelf: "flex-start", boxShadow: "0 2px 8px rgba(0,0,0,0.05)", display: "flex", gap: "5px", alignItems: "center" }}>
+                            <div className="typing-dot" style={{ animationDelay: "0ms" }}></div>
+                            <div className="typing-dot" style={{ animationDelay: "200ms" }}></div>
+                            <div className="typing-dot" style={{ animationDelay: "400ms" }}></div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Input Area */}
+                <div style={{ padding: "20px", borderTop: "1px solid #f1f5f9" }}>
+                    <form
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            const input = e.currentTarget.elements.namedItem("message") as HTMLInputElement;
+                            if (!input.value.trim()) return;
+                            sendMessage({ text: input.value });
+                            input.value = "";
+                        }}
+                        style={{ display: "flex", gap: "10px" }}
+                    >
+                        <input 
+                            name="message" 
+                            disabled={status === "streaming"} 
+                            placeholder={status === "streaming" ? "Thinking..." : "Book coffee with Ben tomorrow..."} 
+                            style={{ flex: 1, padding: "12px 16px", borderRadius: "12px", border: "1px solid #e2e8f0", outline: "none", fontSize: "14px", backgroundColor: "#f8fafc", transition: "border-color 0.2s" }} 
+                        />
+                        <button type="submit" disabled={status === "streaming"} style={{ padding: "12px", background: status === "streaming" ? "#9ca3af" : "#3b82f6", color: "white", border: "none", borderRadius: "12px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+                        </button>
+                    </form>
+                    <div style={{ marginTop: "12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <button onClick={clearHistory} style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: "12px", fontWeight: "600", padding: 0 }}>Reset Conversation</button>
+                        <div style={{ fontSize: "10px", color: "#cbd5e1", fontWeight: "bold" }}>Powered by Cloudflare Agents</div>
                     </div>
-                ))}
-                
-                {status === "streaming" && (
-                    <div style={{ background: "#fff", padding: "14px 18px", borderRadius: "8px", alignSelf: "flex-start", boxShadow: "0 1px 2px rgba(0,0,0,0.1)", display: "flex", gap: "6px", alignItems: "center", marginTop: "5px" }}>
-                        <div className="typing-dot" style={{ animationDelay: "0ms" }}></div>
-                        <div className="typing-dot" style={{ animationDelay: "200ms" }}></div>
-                        <div className="typing-dot" style={{ animationDelay: "400ms" }}></div>
-                    </div>
-                )}
+                </div>
             </div>
 
-            <form
-                onSubmit={(e) => {
-                    e.preventDefault();
-                    const input = e.currentTarget.elements.namedItem(
-                        "message",
-                    ) as HTMLInputElement;
-                    if (!input.value.trim()) return;
-                    sendMessage({ text: input.value });
-                    input.value = "";
+            {/* Splitter Bar */}
+            <div 
+                onMouseDown={handleMouseDown}
+                style={{ 
+                    width: "8px", 
+                    cursor: "col-resize", 
+                    backgroundColor: isDragging ? "#3b82f6" : "transparent",
+                    transition: "background-color 0.2s",
+                    zIndex: 20,
+                    margin: "0 -4px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center"
                 }}
-                style={{ display: "flex", gap: "10px", marginBottom: "10px" }}
             >
-                <input name="message" disabled={status === "streaming"} placeholder={status === "streaming" ? "The AI is thinking... please wait!" : "Try: book a trip to the bar tonight at 9"} style={{ flex: 1, padding: "10px", borderRadius: "4px", border: "1px solid #ccc", outline: "none", fontSize: "16px" }} />
-                <button type="submit" disabled={status === "streaming"} style={{ padding: "10px 20px", background: status === "streaming" ? "#9ca3af" : "#3b82f6", color: "white", border: "none", borderRadius: "4px", cursor: status === "streaming" ? "not-allowed" : "pointer", fontSize: "16px", fontWeight: "bold" }}>
-                    Send
-                </button>
-            </form>
+                <div style={{ width: "2px", height: "40px", backgroundColor: "#e2e8f0", borderRadius: "1px" }} />
+            </div>
 
-            <button onClick={clearHistory} style={{ padding: "8px 16px", background: "#9ca3af", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", fontSize: "14px" }}>Clear history</button>
+            {/* Main Content: Google Calendar Dashboard */}
+            <div style={{ flex: 1, minWidth: "300px", display: "flex", flexDirection: "column", position: "relative", overflow: "hidden" }}>
+                {/* Overlay to prevent iframe from capturing mouse events during resize */}
+                {isDragging && <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 100, backgroundColor: "transparent" }} />}
+                
+                <iframe 
+                    key={calendarNonce} 
+                    src={`https://calendar.google.com/calendar/u/0/embed?src=${encodeURIComponent(user.email)}&ctz=${encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone)}&mode=WEEK&wkst=1&bgcolor=%23ffffff&showPrint=0&showTabs=0&showCalendars=0`} 
+                    style={{ border: "none", width: "100%", height: "100%", opacity: 1, transition: "opacity 0.5s ease" }}
+                    title="Google Calendar"
+                />
+            </div>
         </div>
     );
 }
+
 
 function Login() {
     const loginWithGoogle = () => {
