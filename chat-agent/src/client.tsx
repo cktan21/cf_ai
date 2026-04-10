@@ -115,6 +115,56 @@ function BookingConfirmationCard({ part, msg, addToolApprovalResponse, sendMessa
     );
 }
 
+function DeleteConfirmationCard({ part, msg, addToolApprovalResponse }: any) {
+    const { summary } = part.input;
+
+    const handleAction = (approved: boolean) => {
+        msg.parts.forEach((p: any) => {
+            if (p.type.startsWith("tool-") && p.state === "approval-requested" && p.toolName === part.toolName) {
+                addToolApprovalResponse({ id: p.approval.id, approved: p.toolCallId === part.toolCallId ? approved : false });
+            }
+        });
+    };
+
+    return (
+        <div style={{ marginTop: "15px", padding: "16px", border: "1px solid #fee2e2", borderRadius: "12px", background: "#fffcfc", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
+                <span style={{ fontSize: "20px" }}>🗑️</span>
+                <h3 style={{ margin: 0, color: "#991b1b", fontSize: "15px", fontWeight: "700" }}>Confirm Deletion</h3>
+            </div>
+            
+            <div style={{ marginBottom: "16px", padding: "10px", background: "#fef2f2", borderRadius: "8px", border: "1px solid #fee2e2" }}>
+                <div style={{ fontSize: "14px", color: "#451a1a", fontWeight: "600" }}>{summary}</div>
+                <div style={{ fontSize: "12px", color: "#991b1b", marginTop: "4px" }}>Are you sure you want to remove this event?</div>
+            </div>
+
+            <div style={{ display: "flex", gap: "10px" }}>
+                <button onClick={() => handleAction(true)} style={{ flex: 1, padding: "8px 16px", background: "#ef4444", color: "white", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "600" }}>Delete Now</button>
+                <button onClick={() => handleAction(false)} style={{ padding: "8px 16px", background: "#fff", color: "#475569", border: "1px solid #d1d5db", borderRadius: "6px", cursor: "pointer", fontWeight: "600" }}>Keep Event</button>
+            </div>
+        </div>
+    );
+}
+
+function DebugInfo({ debug }: { debug: any }) {
+    const [isOpen, setIsOpen] = useState(false);
+    return (
+        <div style={{ marginTop: "8px", borderTop: "1px solid #e2e8f0", paddingTop: "8px" }}>
+            <button 
+                onClick={() => setIsOpen(!isOpen)} 
+                style={{ background: "none", border: "none", color: "#64748b", fontSize: "11px", cursor: "pointer", fontWeight: "600", padding: 0 }}
+            >
+                {isOpen ? "🔼 Hide Debug Info" : "🔽 Show Debug Info"}
+            </button>
+            {isOpen && (
+                <pre style={{ margin: "8px 0 0 0", padding: "10px", background: "#f1f5f9", borderRadius: "6px", fontSize: "10px", color: "#475569", overflowX: "auto", border: "1px solid #e2e8f0" }}>
+                    {JSON.stringify(debug, null, 2)}
+                </pre>
+            )}
+        </div>
+    );
+}
+
 function Chat({ user, token }: { user: any; token: string }) {
     // Unique agent for each user based on their email
     const agent = useAgent({ agent: "ChatAgent", name: user.email });
@@ -189,8 +239,9 @@ function Chat({ user, token }: { user: any; token: string }) {
                                             const mm = (Math.abs(offset) % 60).toString().padStart(2, "0");
                                             return `${sign}${hh}:${mm}`;
                                         })(),
-                                        localTime: new Date().toLocaleTimeString(),
                                         currentDate: new Date().toISOString(),
+                                        userLocalDate: new Date().toLocaleDateString('en-CA'), // Returns YYYY-MM-DD in local time
+                                        userLocalTime: new Date().toLocaleTimeString(),
                                     },
                                 });
                             },
@@ -213,15 +264,15 @@ function Chat({ user, token }: { user: any; token: string }) {
             },
         });
 
-    // Automatically refresh the calendar when an event is successfully booked
+    // Automatically refresh the calendar when an event is successfully booked or deleted
     useEffect(() => {
         const lastMessage = messages[messages.length - 1];
         if (lastMessage) {
-            const hasSuccess = lastMessage.parts.some(
-                (p: any) => p.toolName === "createCalendarEvent" && p.state === "output-available" && p.output?.success
+            const hasChange = lastMessage.parts.some(
+                (p: any) => (p.toolName === "createCalendarEvent" || p.toolName === "deleteCalendarEvent") && p.state === "output-available" && p.output?.success
             );
-            if (hasSuccess) {
-                // Delay slightly to give the Google backend time to reflect the new event
+            if (hasChange) {
+                // Delay slightly to give the Google backend time to reflect the change
                 setTimeout(() => setCalendarNonce((n) => n + 1), 1500);
             }
         }
@@ -297,8 +348,19 @@ function Chat({ user, token }: { user: any; token: string }) {
                                     if (part.type === "step-start") return null;
                                     if (part.type.startsWith("tool-")) {
                                         if (part.state === "approval-requested") {
-                                            const isLatestMessage = msg.id === messages[messages.length - 1].id;
-                                            if (!isLatestMessage) return <div key={part.toolCallId} style={{ marginTop: "10px", padding: "8px", color: "#64748b", fontSize: "12px", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0" }}>⚠️ Abandoned tool request</div>;
+                                            const lastUserMsgIndex = [...messages].reverse().findIndex(m => m.role === "user");
+                                            const actualLastUserIndex = lastUserMsgIndex === -1 ? -1 : messages.length - 1 - lastUserMsgIndex;
+                                            const currentMsgIndex = messages.findIndex(m => m.id === msg.id);
+                                            const isStale = actualLastUserIndex > currentMsgIndex;
+
+                                            if (isStale) return <div key={part.toolCallId} style={{ marginTop: "10px", padding: "8px", color: "#64748b", fontSize: "12px", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0" }}>⚠️ Abandoned tool request</div>;
+                                            
+                                            // Always show delete cards (no indexing check)
+                                            if (part.toolName === "deleteCalendarEvent") {
+                                                return <DeleteConfirmationCard key={part.toolCallId} part={part} msg={msg} addToolApprovalResponse={addToolApprovalResponse} />;
+                                            }
+
+                                            // For other tools, ensure we only show the confirmation UI once per tool name
                                             const firstApprovalIndex = msg.parts.findIndex((p: any) => p.type.startsWith("tool-") && p.state === "approval-requested" && p.toolName === part.toolName);
                                             if (i !== firstApprovalIndex) return null;
                                             if (part.toolName === "createCalendarEvent" || (part.input && (part.input as any).summary && (part.input as any).startTime)) {
@@ -309,9 +371,11 @@ function Chat({ user, token }: { user: any; token: string }) {
                                             let summaryText = `✅ ${part.toolName} completed`;
                                             if (part.toolName === "getUserLocation" && part.output?.timezone) summaryText = `📍 Location: ${part.output.timezone}`;
                                             else if (part.toolName === "createCalendarEvent" && part.output?.success) summaryText = `🗓️ Trip added to Google Calendar!`;
+                                            else if (part.toolName === "deleteCalendarEvent" && part.output?.success) summaryText = `🗑️ Event removed successfully.`;
                                             return (
                                                 <div key={part.toolCallId} style={{ marginTop: "10px", padding: "8px 12px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "8px", color: "#166534", fontSize: "13px", fontWeight: "600" }}>
                                                     {summaryText}
+                                                    {part.output?.debug && <DebugInfo debug={part.output.debug} />}
                                                 </div>
                                             );
                                         }
