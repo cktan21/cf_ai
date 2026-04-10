@@ -344,9 +344,9 @@ function Chat({ user, token }: { user: any; token: string }) {
                             lineHeight: "1.5"
                         }}>
                             <div style={{ fontWeight: "700", fontSize: "11px", marginBottom: "4px", opacity: 0.8, textTransform: "uppercase", letterSpacing: "0.5px" }}>{msg.role}</div>
-                            <div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                                 {msg.parts.map((part, i) => {
-                                    if (part.type === "text") return <span key={i}>{part.text}</span>;
+                                    if (part.type === "text") return <span key={i} style={{ marginTop: "4px" }}>{part.text}</span>;
                                     if (part.type === "step-start") return null;
                                     if (part.type.startsWith("tool-")) {
                                         if (part.state === "approval-requested") {
@@ -355,7 +355,7 @@ function Chat({ user, token }: { user: any; token: string }) {
                                             const currentMsgIndex = messages.findIndex(m => m.id === msg.id);
                                             const isStale = actualLastUserIndex > currentMsgIndex;
 
-                                            if (isStale) return <div key={part.toolCallId} style={{ marginTop: "10px", padding: "8px", color: "#64748b", fontSize: "12px", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0" }}>⚠️ Abandoned tool request</div>;
+                                            if (isStale) return <div key={part.toolCallId} style={{ padding: "8px", color: "#64748b", fontSize: "12px", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0" }}>⚠️ Abandoned tool request</div>;
                                             
                                             // Always show delete cards (no indexing check)
                                             if (part.toolName === "deleteCalendarEvent") {
@@ -373,17 +373,19 @@ function Chat({ user, token }: { user: any; token: string }) {
                                             let summaryText = `✅ ${part.toolName} completed`;
                                             if (part.toolName === "getUserLocation" && part.output?.timezone) summaryText = `📍 Location: ${part.output.timezone}`;
                                             else if (part.toolName === "createCalendarEvent" && part.output?.success) summaryText = `🗓️ Trip added to Google Calendar!`;
+                                            else if (part.toolName === "listCalendarEvents") summaryText = `🎉 Event Successfully Found!`;
+
                                             if (part.toolName === "deleteCalendarEvent" && part.output?.success) {
-                                                return <div key={part.toolCallId} style={{ display: "inline-block", marginTop: "5px", padding: "2px 8px", background: "#fef2f2", color: "#991b1b", fontSize: "11px", borderRadius: "10px", border: "1px solid #fee2e2", fontWeight: "600" }}>🗑️ Deleted</div>;
+                                                return <div key={part.toolCallId} style={{ display: "block", padding: "2px 8px", background: "#fef2f2", color: "#991b1b", fontSize: "11px", borderRadius: "10px", border: "1px solid #fee2e2", fontWeight: "600", width: "fit-content" }}>🗑️ Deleted</div>;
                                             }
                                             return (
-                                                <div key={part.toolCallId} style={{ marginTop: "10px", padding: "8px 12px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "8px", color: "#166534", fontSize: "13px", fontWeight: "600" }}>
+                                                <div key={part.toolCallId} style={{ padding: "8px 12px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "8px", color: "#166534", fontSize: "13px", fontWeight: "600" }}>
                                                     {summaryText}
                                                     {part.output?.debug && <DebugInfo debug={part.output.debug} />}
                                                 </div>
                                             );
                                         }
-                                        return <div key={part.toolCallId} style={{ marginTop: "10px", fontSize: "12px", color: "#3b82f6", fontStyle: "italic", background: "#eff6ff", padding: "8px", borderRadius: "8px" }}>⚙️ Running: <strong>{part.toolName}</strong>...</div>;
+                                        return <div key={part.toolCallId} style={{ fontSize: "12px", color: "#3b82f6", fontStyle: "italic", background: "#eff6ff", padding: "8px", borderRadius: "8px" }}>⚙️ Running: <strong>{part.toolName}</strong>...</div>;
                                     }
                                     return null;
                                 })}
