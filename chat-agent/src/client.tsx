@@ -133,6 +133,13 @@ function Chat({ user, token }: { user: any; token: string }) {
                                         latitude: position.coords.latitude,
                                         longitude: position.coords.longitude,
                                         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                                        timezoneOffset: (() => {
+                                            const offset = -new Date().getTimezoneOffset();
+                                            const sign = offset >= 0 ? "+" : "-";
+                                            const hh = Math.floor(Math.abs(offset) / 60).toString().padStart(2, "0");
+                                            const mm = (Math.abs(offset) % 60).toString().padStart(2, "0");
+                                            return `${sign}${hh}:${mm}`;
+                                        })(),
                                         localTime: new Date().toLocaleTimeString(),
                                         currentDate: new Date().toISOString(),
                                     },
