@@ -1,6 +1,6 @@
 import { useAgent } from "agents/react";
 import { useAgentChat } from "@cloudflare/ai-chat/react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 // Access the environment variable using Vite's import.meta.env system
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
@@ -21,6 +21,16 @@ function BookingConfirmationCard({ part, msg, addToolApprovalResponse, sendMessa
     const [description, setDescription] = useState(eventData.description || "");
     const [startTime, setStartTime] = useState(() => formatForInput(eventData.startTime));
     const [endTime, setEndTime] = useState(() => formatForInput(eventData.endTime));
+
+    // Keep state in sync with AI updates unless user is actively editing
+    useEffect(() => {
+        if (!isEditing) {
+            setSummary(eventData.summary || "");
+            setDescription(eventData.description || "");
+            setStartTime(formatForInput(eventData.startTime));
+            setEndTime(formatForInput(eventData.endTime));
+        }
+    }, [eventData, isEditing]);
 
     const handleAction = async (approved: boolean) => {
         if (approved) {
@@ -210,7 +220,7 @@ function Chat({ user, token }: { user: any; token: string }) {
 
     // Store user data in Agent state, demonstrating persistence based on user data
     useEffect(() => {
-        if (agent) {
+        if (agent && agent.state?.googleToken !== token) {
             agent.setState({
                 ...(agent.state || {}),
                 userData: user,
@@ -267,16 +277,26 @@ function Chat({ user, token }: { user: any; token: string }) {
         });
 
     // Automatically refresh the calendar when an event is successfully booked or deleted
+    // Use a ref to track which tool results we've already refreshed for, preventing redundant reloads
+    const refreshedToolCalls = useRef(new Set());
     useEffect(() => {
-        const lastMessage = messages[messages.length - 1];
-        if (lastMessage) {
-            const hasChange = lastMessage.parts.some(
-                (p: any) => (p.toolName === "createCalendarEvent" || p.toolName === "deleteCalendarEvent") && p.state === "output-available" && p.output?.success
-            );
-            if (hasChange) {
-                // Delay slightly to give the Google backend time to reflect the change
-                setTimeout(() => setCalendarNonce((n) => n + 1), 1500);
+        const toolResultParts = messages.flatMap(m => m.parts).filter((p: any) => 
+            p.type === "tool-result" && 
+            (p.toolName === "createCalendarEvent" || p.toolName === "deleteCalendarEvent") && 
+            p.output?.success
+        );
+
+        let didChange = false;
+        toolResultParts.forEach((p: any) => {
+            if (!refreshedToolCalls.current.has(p.toolCallId)) {
+                refreshedToolCalls.current.add(p.toolCallId);
+                didChange = true;
             }
+        });
+
+        if (didChange) {
+            // Delay slightly to give the Google backend time to reflect the change
+            setTimeout(() => setCalendarNonce((n) => n + 1), 1000);
         }
     }, [messages]);
 
