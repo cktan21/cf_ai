@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cf-ai-scheduler",
+  "compatibility_date": "2026-04-12",
+  "observability": {
+    "enabled": true
+  },
+  "assets": {
+    "directory": "chat-agent"
+  },
+  "compatibility_flags": [
+    "nodejs_compat"
+  ]
+}
