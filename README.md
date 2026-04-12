@@ -7,6 +7,8 @@
 CalendAI is a context-aware scheduling agent. By combining browser-based location intelligence with robust server-side state persistence, it handles complex scheduling requests like "What's on my plate today?" or "Reschedule my 3 PM meeting to tomorrow" with ease.
 
 ### Key Features
+calendAI is able to create, edit and delete events based on the user's prompt and the users google calendar data, each user has its own chat history which persist between sessions
+
 ### 1. Identity-Aware Durable Objects
 The application implements an identity-first architecture using **Google OAuth2** as the primary authentication layer.
 - **Unique Account Pinning**: Every user session is anchored to a unique **Durable Object** instance, keyed by the user's verified Google email. This ensures strict data isolation and provides a persistent execution context for each individual user.
@@ -24,11 +26,6 @@ Instead of blindly executing calendar changes, the agent uses a **two-stage veri
 - **Stage 1 (Inference)**: The agent proposes a tool call (e.g., `createCalendarEvent`).
 - **Stage 2 (Verification)**: The Durable Object holds the execution and sends an `approval-requested` signal to the UI.
 - **Stage 3 (Manual Override)**: You can edit the parameters on the fly in the UI. The updated data is synced back to the DO, which then executes the final API call with the corrected values.
-
-### 4. Stateful Synchronization (Cloudflare Agents)
-The project leverages the **Cloudflare Agents** protocol to maintain consistency between the server-side state and the client-side UI.
-- **WebSocket Protocol**: All communication occurs over a persistent bidirectional socket, enabling real-time streaming of inference results and immediate tool-state updates.
-- **Unified State Repository**: The Durable Object serves as the single source of truth. Changes to the internal SQLite database are automatically reconciled with the React state on the client, preventing data drift and ensuring that the UI always reflects the current status of the agentic workflow.
 
 ## 🛠️ Fulfilling Technical Requirements
 
