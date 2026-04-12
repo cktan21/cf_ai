@@ -23,37 +23,57 @@ export class ChatAgent extends AIChatAgent {
         const result = streamText({
             model: workersai("@cf/meta/llama-4-scout-17b-16e-instruct"),
             system:
-                "STRICT PROTOCOL: You are a high-performance scheduling assistant. \n" +
+                `STRICT PROTOCOL: You are a high-performance scheduling assistant. \n` +
+                `Current Real-World Time: ${new Date().toISOString()} (Use this ONLY as a reference for relative terms like 'today' or 'tomorrow'). \n` +
                 "- If you need location or timezone data, call getUserLocation IMMEDIATELY. \n" +
                 "- NEVER explain your internal steps (do not say 'Step 1', 'Calculating...', etc). \n" +
                 "- NEVER output raw JSON. Your output must ONLY consist of Tool Calls until the task is ready for confirmation.\n" +
-                "- When scheduling, use the timezone offset provided by the tool (e.g., +02:00). If the user says 12pm tomorrow in Paris (+02:00) and today is 2026-04-10, use '2026-04-11T12:00:00+02:00' for the ISO string.\n" +
+                "- When scheduling, use the timezone offset provided by the tool (e.g., +02:00). \n" +
+                "- Date calculation example: If user says '12pm tomorrow' and getUserLocation says today is 2026-04-12, use '2026-04-13T12:00:00+offset' for the ISO string.\n" +
                 "- For 'today's events', always search the FULL day range (00:00 to 23:59) using the 'userLocalDate' provided by getUserLocation.\n" +
                 "- Once createCalendarEvent or deleteCalendarEvent is successful, provide a brief confirmation and STOP. \n" +
                 "- NEVER re-run listCalendarEvents or getUserLocation automatically after a successful action.\n" +
                 "- FINAL RESULT ONLY: Once the task is complete, stop with a final short sentence.",
             messages: pruneMessages({
-                messages: await convertToModelMessages(this.messages),
+                messages: (await convertToModelMessages(this.messages)).filter((m, i, arr) => {
+                    // Prevent MissingToolResultsError, removes assistant tool calls that don't have a corresponding result
+                    if (m.role === "assistant" && Array.isArray(m.content)) {
+                        const toolCallIds = m.content
+                            .filter((part: any) => part.type === "tool-call")
+                            .map((part: any) => part.toolCallId);
+
+                        if (toolCallIds.length > 0) {
+                            const hasResults = arr.slice(i + 1).some(
+                                nextM => nextM.role === "tool" && 
+                                (Array.isArray(nextM.content) ? nextM.content : []).some((res: any) => toolCallIds.includes(res.toolCallId))
+                            );
+                            const isRecent = i >= arr.length - 5;
+
+                            return hasResults || isRecent;
+                        }
+                    }
+                    return true;
+                }),
                 toolCalls: "before-last-2-messages",
             }),
             tools: {
-                getWeather: tool({
-                    description: "Get the current weather for a city",
-                    inputSchema: z.object({
-                        city: z.string().describe("City name"),
-                    }),
-                    execute: async ({ city }) => {
-                        // Replace with a real weather API in production
-                        const conditions = ["sunny", "cloudy", "rainy"];
-                        const temp = Math.floor(Math.random() * 30) + 5;
-                        return {
-                            city,
-                            temperature: temp,
-                            condition:
-                                conditions[Math.floor(Math.random() * conditions.length)],
-                        };
-                    },
-                }),
+                // getWeather: tool({
+                //     description: "Get the current weather for a city",
+                //     inputSchema: z.object({
+                //         city: z.string().describe("City name"),
+                //     }),
+                //     execute: async ({ city }) => {
+                //         // Replace with a real weather API in production
+                //         const conditions = ["sunny", "cloudy", "rainy"];
+                //         const temp = Math.floor(Math.random() * 30) + 5;
+                //         return {
+                //             city,
+                //             temperature: temp,
+                //             condition:
+                //                 conditions[Math.floor(Math.random() * conditions.length)],
+                //         };
+                //     },
+                // }),
 
                 getUserLocation: tool({
                     description: "Get the user's physical geographic location and timezone. Prompts the user's browser for location permission.",

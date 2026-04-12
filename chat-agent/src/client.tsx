@@ -35,11 +35,16 @@ function BookingConfirmationCard({ part, msg, addToolApprovalResponse, sendMessa
     const handleAction = async (approved: boolean) => {
         if (approved) {
             // Capture the current component state (which might have been edited)
+            const safeToISO = (dateStr: string) => {
+                const d = new Date(dateStr);
+                return isNaN(d.getTime()) ? null : d.toISOString();
+            };
+
             const payload = {
                 summary,
                 description,
-                startTime: new Date(startTime).toISOString(),
-                endTime: new Date(endTime).toISOString()
+                startTime: safeToISO(startTime) || eventData.startTime,
+                endTime: safeToISO(endTime) || eventData.endTime
             };
             
             // Stash the final data in the Agent's state so the server uses it instead of original inputs
@@ -218,9 +223,11 @@ function Chat({ user, token }: { user: any; token: string }) {
         };
     }, [isDragging]);
 
-    // Store user data in Agent state, demonstrating persistence based on user data
+    // Track if the initial state has been synchronized to prevent loops
+    const hasSyncedRef = useRef(false);
     useEffect(() => {
-        if (agent && agent.state?.googleToken !== token) {
+        if (agent && !hasSyncedRef.current && agent.state?.googleToken !== token) {
+            hasSyncedRef.current = true;
             agent.setState({
                 ...(agent.state || {}),
                 userData: user,
@@ -281,7 +288,7 @@ function Chat({ user, token }: { user: any; token: string }) {
     const refreshedToolCalls = useRef(new Set());
     useEffect(() => {
         const toolResultParts = messages.flatMap(m => m.parts).filter((p: any) => 
-            p.type === "tool-result" && 
+            (p.state === "output-available" || p.type === "tool-result") && 
             (p.toolName === "createCalendarEvent" || p.toolName === "deleteCalendarEvent") && 
             p.output?.success
         );
